@@ -14,6 +14,7 @@ export const config = {
   adminPassword: process.env.ADMIN_PASSWORD || "",
   originalsDir: process.env.ORIGINALS_DIR || "/data/originals",
   videoCrf: Number(process.env.VIDEO_CRF || 26),
+  staticDir: process.env.STATIC_DIR || "/app/public",
   uploadDir: process.env.UPLOAD_DIR || "/data/uploads",
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 200),
   defaultCreateLink: process.env.DEFAULT_CREATE_LINK || "https://t.me/AddmycoBot",

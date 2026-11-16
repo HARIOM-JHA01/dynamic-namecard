@@ -18,7 +18,15 @@ fs.mkdirSync(config.originalsDir, { recursive: true });
 
 const app = express();
 app.set("trust proxy", 1);
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    // The page is served by this app, so keep helmet's default CSP, minus
+    // upgrade-insecure-requests (it would break plain-http local testing;
+    // production is https via the host's nginx anyway).
+    contentSecurityPolicy: { useDefaults: true, directives: { "upgrade-insecure-requests": null } },
+  }),
+);
 app.use(cors());
 app.use(express.json({ limit: "100kb" }));
 
@@ -332,6 +340,31 @@ admin.put("/settings", async (req, res) => {
 app.use("/api/admin", admin);
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
+// ---------- frontend (built React app) ----------
+// Served from this container so the repo needs no web-server config; the host's
+// nginx only has to proxy to this app and terminate TLS.
+if (fs.existsSync(path.join(config.staticDir, "index.html"))) {
+  app.use(
+    express.static(config.staticDir, {
+      index: false,
+      setHeaders: (res, file) => {
+        if (file.endsWith(".html")) res.setHeader("Cache-Control", "no-cache");
+        else if (file.includes(`${path.sep}assets${path.sep}`))
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable"); // hashed names
+        else res.setHeader("Cache-Control", "public, max-age=3600");
+      },
+    }),
+  );
+  // SPA fallback (/admin etc.); unknown /api and /uploads paths stay 404s.
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api/") || req.path.startsWith("/uploads/")) return next();
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(path.join(config.staticDir, "index.html"));
+  });
+} else {
+  console.warn(`No built frontend at ${config.staticDir}; serving API only.`);
+}
+
 // ---------- errors ----------
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
@@ -366,4 +399,6 @@ const seedAdmin = async () => {
 await mongoose.connect(config.mongoUri);
 await seedAdmin();
 for (const v of await Video.find({ status: "processing" })) enqueue(v._id);
-app.listen(config.port, () => console.log(`API listening on :${config.port}`));
+const server = app.listen(config.port, () => console.log(`App listening on :${config.port}`));
+// Node's default 5-minute request timeout would cut off large uploads on slow links.
+server.requestTimeout = 30 * 60 * 1000;

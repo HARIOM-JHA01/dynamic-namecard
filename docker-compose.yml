@@ -1,3 +1,5 @@
+# App + MongoDB only. TLS and the public domain are handled by nginx on the host,
+# which proxies to 127.0.0.1:${APP_PORT}.
 services:
   mongo:
     image: mongo:7
@@ -5,10 +7,12 @@ services:
     volumes:
       - mongo_data:/data/db
 
-  api:
-    build: ./server
+  app:
+    build: .
     restart: unless-stopped
     depends_on: [mongo]
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:4000"
     environment:
       MONGO_URI: mongodb://mongo:27017/dynamic-namecard
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
@@ -16,20 +20,13 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
       UPLOAD_DIR: /data/uploads
       ORIGINALS_DIR: /data/originals
-      VIDEO_CRF: ${VIDEO_CRF:-26}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
+      VIDEO_CRF: ${VIDEO_CRF:-26}
       DEFAULT_CREATE_LINK: ${DEFAULT_CREATE_LINK:-https://t.me/AddmycoBot}
       DEFAULT_CONTACT_EMAIL: ${DEFAULT_CONTACT_EMAIL:-Office@addmy.co}
     volumes:
       - uploads_data:/data/uploads
       - originals_data:/data/originals
-
-  web:
-    build: ./client
-    restart: unless-stopped
-    depends_on: [api]
-    ports:
-      - "${WEB_PORT:-80}:80"
 
 volumes:
   mongo_data:
